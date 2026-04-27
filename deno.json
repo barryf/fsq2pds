@@ -1,5 +1,6 @@
 {
   "tasks": {
-    "bootstrap": "deno run --allow-env --allow-net bootstrap/fsq-oauth.ts"
+    "bootstrap": "deno run --allow-env --allow-net bootstrap/fsq-oauth.ts",
+    "publish-lexicon": "deno run --allow-env --allow-net --allow-read bootstrap/publish-lexicon.ts"
   }
 }
