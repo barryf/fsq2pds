@@ -1,6 +1,6 @@
 const PDS_URL = Deno.env.get("BSKY_PDS_URL") ?? "https://bsky.social";
 
-interface Session {
+export interface Session {
   accessJwt: string;
   did: string;
 }
@@ -55,6 +55,36 @@ export async function uploadBlob(
 export interface CreateRecordResult {
   uri: string;
   cid: string;
+}
+
+export async function listRecords(
+  session: Session,
+  collection: string,
+): Promise<Set<string>> {
+  const rkeys = new Set<string>();
+  let cursor: string | undefined;
+  while (true) {
+    const params = new URLSearchParams({
+      repo: session.did,
+      collection,
+      limit: "100",
+    });
+    if (cursor) params.set("cursor", cursor);
+    const resp = await fetch(`${PDS_URL}/xrpc/com.atproto.repo.listRecords?${params}`, {
+      headers: { authorization: `Bearer ${session.accessJwt}` },
+    });
+    if (!resp.ok) {
+      throw new Error(`listRecords failed (${resp.status}): ${await resp.text()}`);
+    }
+    const data = await resp.json();
+    for (const record of data.records ?? []) {
+      const rkey = String(record.uri).split("/").at(-1);
+      if (rkey) rkeys.add(rkey);
+    }
+    if (!data.cursor || (data.records?.length ?? 0) === 0) break;
+    cursor = data.cursor;
+  }
+  return rkeys;
 }
 
 export async function createRecord(

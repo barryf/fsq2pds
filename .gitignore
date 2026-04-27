@@ -1,3 +1,4 @@
 .vt/
 .env
 .claude/
+backfill-failures.log

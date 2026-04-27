@@ -6,8 +6,8 @@ import {
   recordCheckin,
 } from "./lib/db.ts";
 import { getCheckins } from "./lib/foursquare.ts";
-import { fetchPhoto } from "./lib/photos.ts";
-import { clearSession, getSession, uploadBlob, createRecord } from "./lib/atproto.ts";
+import { clearSession, getSession } from "./lib/atproto.ts";
+import { syncCheckin } from "./lib/sync.ts";
 
 const FSQ_OAUTH_TOKEN = Deno.env.get("FSQ_OAUTH_TOKEN") ?? "";
 const FSQ_API_VERSION = Deno.env.get("FSQ_API_VERSION") ?? "20240101";
@@ -77,51 +77,7 @@ export default async function (_interval: Interval): Promise<void> {
     }
 
     try {
-      const location: Record<string, string> = {
-        "$type": "community.lexicon.location.fsq",
-        fsq_place_id: checkin.venue.id,
-        name: checkin.venue.name,
-      };
-      if (checkin.venue.location?.lat != null && checkin.venue.location?.lng != null) {
-        location.latitude = String(checkin.venue.location.lat);
-        location.longitude = String(checkin.venue.location.lng);
-      }
-
-      const formattedAddress = checkin.venue.location?.formattedAddress;
-      const address = formattedAddress?.length ? formattedAddress.join(", ") : undefined;
-      const category = checkin.venue.categories?.[0]?.name;
-
-      const photos: object[] = [];
-      for (const photo of checkin.photos?.items ?? []) {
-        const fetched = await fetchPhoto(photo);
-        if (!fetched) continue;
-        try {
-          const blobRef = await uploadBlob(session, fetched.bytes, fetched.mimeType);
-          photos.push({ image: blobRef });
-        } catch (err) {
-          // Non-fatal: checkin record still created without this photo
-          console.warn(`Photo upload failed for checkin ${checkin.id}:`, err);
-        }
-      }
-
-      const record: Record<string, unknown> = {
-        "$type": "com.barryfrost.checkin",
-        createdAt: new Date(checkin.createdAt * 1000).toISOString(),
-        location,
-        ...(address && { address }),
-        ...(category && { category }),
-      };
-      if (photos.length > 0) {
-        record.photos = photos;
-      }
-
-      const { uri, cid } = await createRecord(
-        session,
-        "com.barryfrost.checkin",
-        checkin.id, // FSQ checkin ID used as rkey — unique, valid chars, stable
-        record,
-      );
-
+      const { uri, cid } = await syncCheckin(session, checkin);
       await recordCheckin(checkin.id, checkin.createdAt, uri, cid);
       console.log(`Synced ${checkin.id} (${checkin.venue.name}) → ${uri}`);
     } catch (err) {

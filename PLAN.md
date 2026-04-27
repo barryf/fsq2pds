@@ -216,4 +216,4 @@ End-to-end test plan once deployed:
 - Shout text, venue categories (easy to add to lexicon later — additive change, won't break existing records).
 - Push API webhook (revisit if 15-min latency feels too slow).
 - Publishing the lexicon doc itself to your PDS as `com.atproto.lexicon.schema` (nice-to-have, doesn't affect record validity).
-- Backfill of historical checkins.
+- ~~Backfill of historical checkins~~ — implemented; see `bootstrap/backfill.ts`.

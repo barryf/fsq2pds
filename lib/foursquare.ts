@@ -27,11 +27,14 @@ export interface FsqCheckin {
 export async function getCheckins(
   oauthToken: string,
   apiVersion: string,
+  offset = 0,
+  limit = 50,
 ): Promise<FsqCheckin[]> {
   const params = new URLSearchParams({
     oauth_token: oauthToken,
     v: apiVersion,
-    limit: "50",
+    limit: String(limit),
+    offset: String(offset),
   });
   const resp = await fetch(`${FSQ_API_BASE}/users/self/checkins?${params}`);
   if (!resp.ok) {
