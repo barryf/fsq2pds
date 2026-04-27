@@ -20,6 +20,16 @@
             "ref": "community.lexicon.location.fsq",
             "description": "The Foursquare place where the checkin occurred"
           },
+          "address": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Formatted venue address, e.g. \"123 High Street, London, UK\""
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Primary Foursquare venue category, e.g. \"Coffee Shop\""
+          },
           "photos": {
             "type": "array",
             "maxLength": 8,

@@ -14,7 +14,9 @@ export interface FsqCheckin {
     location?: {
       lat?: number;
       lng?: number;
+      formattedAddress?: string[];
     };
+    categories?: { name: string }[];
   };
   photos?: {
     count: number;

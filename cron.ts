@@ -87,6 +87,10 @@ export default async function (_interval: Interval): Promise<void> {
         location.longitude = String(checkin.venue.location.lng);
       }
 
+      const formattedAddress = checkin.venue.location?.formattedAddress;
+      const address = formattedAddress?.length ? formattedAddress.join(", ") : undefined;
+      const category = checkin.venue.categories?.[0]?.name;
+
       const photos: object[] = [];
       for (const photo of checkin.photos?.items ?? []) {
         const fetched = await fetchPhoto(photo);
@@ -104,6 +108,8 @@ export default async function (_interval: Interval): Promise<void> {
         "$type": "com.barryfrost.checkin",
         createdAt: new Date(checkin.createdAt * 1000).toISOString(),
         location,
+        ...(address && { address }),
+        ...(category && { category }),
       };
       if (photos.length > 0) {
         record.photos = photos;
