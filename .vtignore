@@ -1,0 +1,7 @@
+.git/
+.gitignore
+.claude/
+PLAN.md
+README.md
+bootstrap/
+lexicons/
