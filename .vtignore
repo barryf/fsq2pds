@@ -2,6 +2,6 @@
 .gitignore
 .claude/
 PLAN.md
-README.md
+CLAUDE.md
 bootstrap/
 lexicons/
