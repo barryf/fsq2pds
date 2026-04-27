@@ -1,0 +1,5 @@
+{
+  "tasks": {
+    "bootstrap": "deno run --allow-env --allow-net bootstrap/fsq-oauth.ts"
+  }
+}
