@@ -35,21 +35,25 @@
             "maxLength": 8,
             "description": "Photos taken at the checkin, uploaded as PDS blobs",
             "items": {
-              "type": "object",
-              "required": ["image"],
-              "properties": {
-                "image": {
-                  "type": "blob",
-                  "accept": ["image/jpeg", "image/png", "image/webp"],
-                  "maxSize": 1000000
-                },
-                "alt": {
-                  "type": "string",
-                  "maxLength": 1000
-                }
-              }
+              "type": "ref",
+              "ref": "#photo"
             }
           }
+        }
+      }
+    },
+    "photo": {
+      "type": "object",
+      "required": ["image"],
+      "properties": {
+        "image": {
+          "type": "blob",
+          "accept": ["image/jpeg", "image/png", "image/webp"],
+          "maxSize": 1000000
+        },
+        "alt": {
+          "type": "string",
+          "maxLength": 1000
         }
       }
     }
