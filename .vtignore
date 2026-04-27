@@ -1,7 +1,7 @@
-.git/
+.git
 .gitignore
-.claude/
+.claude
 PLAN.md
 CLAUDE.md
-bootstrap/
-lexicons/
+bootstrap
+lexicons
