@@ -37,9 +37,10 @@ export default async function (_interval: Interval): Promise<void> {
     return;
   }
 
-  const launchTs = parseInt(cursorStr, 10);
+  const cursorTs = parseInt(cursorStr, 10);
+  let newCursorTs = cursorTs;
 
-  console.log(`Fetching recent checkins (launch cursor: ${new Date(launchTs * 1000).toISOString()})`);
+  console.log(`Fetching recent checkins (cursor: ${new Date(cursorTs * 1000).toISOString()})`);
 
   let checkins;
   try {
@@ -49,8 +50,8 @@ export default async function (_interval: Interval): Promise<void> {
     return;
   }
 
-  // Filter to checkins after our launch timestamp; FSQ returns newest-first
-  const newCheckins = checkins.filter((c) => c.createdAt > launchTs);
+  // Filter to checkins after our cursor; FSQ returns newest-first
+  const newCheckins = checkins.filter((c) => c.createdAt > cursorTs);
 
   if (newCheckins.length === 0) {
     console.log("No new checkins");
@@ -73,6 +74,7 @@ export default async function (_interval: Interval): Promise<void> {
   for (const checkin of newCheckins) {
     if (await hasCheckin(checkin.id)) {
       console.log(`Already synced: ${checkin.id}`);
+      newCursorTs = Math.max(newCursorTs, checkin.createdAt);
       continue;
     }
 
@@ -80,11 +82,17 @@ export default async function (_interval: Interval): Promise<void> {
       const { uri, cid } = await syncCheckin(session, checkin);
       await recordCheckin(checkin.id, checkin.createdAt, uri, cid);
       console.log(`Synced ${checkin.id} (${checkin.venue.name}) → ${uri}`);
+      newCursorTs = Math.max(newCursorTs, checkin.createdAt);
     } catch (err) {
       console.error(`Failed to process checkin ${checkin.id}:`, err);
       // Stop here; seen_checkins dedup ensures next run replays this checkin cleanly
       break;
     }
+  }
+
+  if (newCursorTs > cursorTs) {
+    await setState("cursor_ts", String(newCursorTs));
+    console.log(`Cursor advanced to ${new Date(newCursorTs * 1000).toISOString()}`);
   }
 }
 
