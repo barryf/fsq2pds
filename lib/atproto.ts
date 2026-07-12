@@ -34,7 +34,7 @@ export async function getSession(): Promise<Session> {
 
 export async function uploadBlob(
   session: Session,
-  bytes: Uint8Array,
+  bytes: Uint8Array<ArrayBuffer>,
   mimeType: string,
 ): Promise<object> {
   const resp = await fetch(`${PDS_URL}/xrpc/com.atproto.repo.uploadBlob`, {

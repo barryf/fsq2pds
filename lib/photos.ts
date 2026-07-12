@@ -3,7 +3,7 @@ import { photoUrl, type FsqPhoto } from "./foursquare.ts";
 const MAX_PHOTO_BYTES = 1_000_000;
 
 export interface FetchedPhoto {
-  bytes: Uint8Array;
+  bytes: Uint8Array<ArrayBuffer>;
   mimeType: string;
 }
 
