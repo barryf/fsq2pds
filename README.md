@@ -61,6 +61,9 @@ A browser window will open. Log in and approve. The token is printed to your ter
     "latitude": "37.776",
     "longitude": "-122.418"
   },
+  "address": "123 High Street, London, UK",
+  "category": "Coffee Shop",
+  "comment": "Best flat white in town",
   "photos": [
     {
       "image": {
@@ -74,9 +77,11 @@ A browser window will open. Log in and approve. The token is printed to your ter
 }
 ```
 
+`address`, `category`, `comment`, and `photos` are all optional — omitted when the source checkin has no value for them. The lexicon doc itself is maintained in the `barryfrost-v7` repo, not here.
+
 ## Notes
 
-- **Only new checkins** are synced. Nothing before the first run is imported.
+- **Only new checkins** are synced. Nothing before the first run is imported. Use `deno task backfill` to import historical checkins, and `deno task backfill-shouts` to add `comment` to already-synced records whose shout predates that feature.
 - **Photos**: fetched at FSQ's `1024x1024` size. Skipped if >1MB or unreachable.
-- **Edits/deletes**: not synced. Records are write-once. Delete PDS records manually if needed.
+- **Edits/deletes**: not synced. Records are write-once. Delete PDS records manually if needed. (`backfill-shouts` is a one-time exception that patches `comment` onto existing records.)
 - **If a run fails mid-way**, the cursor stays at the last successful checkin. The next run replays cleanly — duplicate protection is handled by the `seen_checkins` table.

@@ -60,8 +60,8 @@ export interface CreateRecordResult {
 export async function listRecords(
   session: Session,
   collection: string,
-): Promise<Set<string>> {
-  const rkeys = new Set<string>();
+): Promise<Map<string, { cid: string; value: Record<string, unknown> }>> {
+  const records = new Map<string, { cid: string; value: Record<string, unknown> }>();
   let cursor: string | undefined;
   while (true) {
     const params = new URLSearchParams({
@@ -79,12 +79,12 @@ export async function listRecords(
     const data = await resp.json();
     for (const record of data.records ?? []) {
       const rkey = String(record.uri).split("/").at(-1);
-      if (rkey) rkeys.add(rkey);
+      if (rkey) records.set(rkey, { cid: record.cid, value: record.value });
     }
     if (!data.cursor || (data.records?.length ?? 0) === 0) break;
     cursor = data.cursor;
   }
-  return rkeys;
+  return records;
 }
 
 export async function createRecord(
@@ -103,6 +103,34 @@ export async function createRecord(
   });
   if (!resp.ok) {
     throw new Error(`createRecord failed (${resp.status}): ${await resp.text()}`);
+  }
+  const data = await resp.json();
+  return { uri: data.uri, cid: data.cid };
+}
+
+export async function putRecord(
+  session: Session,
+  collection: string,
+  rkey: string,
+  record: object,
+  swapRecord?: string,
+): Promise<CreateRecordResult> {
+  const resp = await fetch(`${PDS_URL}/xrpc/com.atproto.repo.putRecord`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "authorization": `Bearer ${session.accessJwt}`,
+    },
+    body: JSON.stringify({
+      repo: session.did,
+      collection,
+      rkey,
+      record,
+      ...(swapRecord && { swapRecord }),
+    }),
+  });
+  if (!resp.ok) {
+    throw new Error(`putRecord failed (${resp.status}): ${await resp.text()}`);
   }
   const data = await resp.json();
   return { uri: data.uri, cid: data.cid };

@@ -22,6 +22,7 @@ export interface FsqCheckin {
     count: number;
     items: FsqPhoto[];
   };
+  shout?: string;
 }
 
 export async function getCheckins(

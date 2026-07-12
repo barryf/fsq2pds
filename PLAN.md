@@ -213,7 +213,17 @@ End-to-end test plan once deployed:
 ## Out of scope (v1)
 
 - Edits / deletes from Swarm (you'll manage manually).
-- Shout text, venue categories (easy to add to lexicon later — additive change, won't break existing records).
+- ~~Shout text, venue categories~~ — implemented; categories/address landed earlier, shouts as `comment` on 2026-07-12 (see below).
 - Push API webhook (revisit if 15-min latency feels too slow).
-- Publishing the lexicon doc itself to your PDS as `com.atproto.lexicon.schema` (nice-to-have, doesn't affect record validity).
+- ~~Publishing the lexicon doc itself to your PDS as `com.atproto.lexicon.schema`~~ — done; published from the `barryfrost-v7` repo via `npm run publish:lexicon`.
 - ~~Backfill of historical checkins~~ — implemented; see `bootstrap/backfill.ts`.
+
+## 2026-07-12 — Import Swarm shouts as `comment`
+
+Foursquare checkins carry an optional `shout` string (user comment, ~140 chars). Added a `comment` field to synced records: `lib/foursquare.ts`'s `FsqCheckin` gained `shout?: string`, and `lib/sync.ts` now derives `comment = checkin.shout?.trim()` and spreads it into the record alongside `address`/`category`.
+
+New one-time script `bootstrap/backfill-shouts.ts` (mirroring `bootstrap/backfill.ts`'s structure) patches `comment` onto already-synced PDS records whose FSQ checkin has a shout that predates this feature, using the new `putRecord` (upsert with `swapRecord` CAS) helper in `lib/atproto.ts`. `listRecords` was changed to return a `Map<rkey, { cid, value }>` instead of a `Set<rkey>` so the backfill script can read and patch existing record values. New `deno task backfill-shouts`.
+
+The `com.barryfrost.checkin` lexicon doc's canonical copy has moved to the `barryfrost-v7` repo (published there via `npm run publish:lexicon`); this repo's local `lexicons/` copy and `bootstrap/publish-lexicon.ts` were deleted to avoid drift between two sources of truth.
+
+Rollout completed 2026-07-12: lexicon republished with the `comment` property, `backfill-shouts` dry-run verified then run for real against the PDS, and the updated cron deployed to Val.Town.

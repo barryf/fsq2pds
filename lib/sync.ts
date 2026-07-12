@@ -25,6 +25,7 @@ export async function syncCheckin(
   const formattedAddress = checkin.venue.location?.formattedAddress;
   const address = formattedAddress?.length ? formattedAddress.join(", ") : undefined;
   const category = checkin.venue.categories?.[0]?.name;
+  const comment = checkin.shout?.trim();
 
   const photos: object[] = [];
   for (const photo of checkin.photos?.items ?? []) {
@@ -44,6 +45,7 @@ export async function syncCheckin(
     location,
     ...(address && { address }),
     ...(category && { category }),
+    ...(comment && { comment }),
   };
   if (photos.length > 0) {
     record.photos = photos;
