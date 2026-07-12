@@ -2,3 +2,4 @@
 .env
 .claude/
 backfill-failures.log
+deno.lock
