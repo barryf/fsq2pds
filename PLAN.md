@@ -1,4 +1,4 @@
-> **Historical.** This is the original design doc from when fsq2pds ran on Val Town. It has since moved to Cloudflare Workers + D1 (see README → *Migrating from Val Town*). The sync design below is unchanged, but references to Val Town, `std/sqlite` and `cron.ts` are out of date.
+> **Historical.** This is the original design doc from when fsq2pds ran on Val Town. It has since moved to Cloudflare Workers + D1 (see README → *Migrating from Val Town*), and the local scripts moved from Deno to Node. The sync design below is unchanged, but references to Val Town, Deno, `std/sqlite`, `deno.json` and `cron.ts` are out of date.
 
 # fsq2pds — Foursquare/Swarm checkins → ATProto PDS
 

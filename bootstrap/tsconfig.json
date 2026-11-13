@@ -1,0 +1,19 @@
+{
+  // Local Node scripts. Node (>=22.18) runs these .ts files directly by
+  // stripping types, so only erasable TypeScript syntax is allowed here and in
+  // the lib/ files they import (no enums, namespaces or parameter properties).
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["*.ts"]
+}
