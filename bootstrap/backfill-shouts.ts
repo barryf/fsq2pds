@@ -14,7 +14,7 @@
  */
 
 import { getCheckins } from "../lib/foursquare.ts";
-import { clearSession, getSession, listRecords, putRecord } from "../lib/atproto.ts";
+import { getSession, listRecords, putRecord } from "../lib/atproto.ts";
 
 const isDryRun = Deno.args.includes("--dry-run");
 const FSQ_OAUTH_TOKEN = Deno.env.get("FSQ_OAUTH_TOKEN") ?? "";
@@ -23,6 +23,12 @@ const FAILURE_LOG = "backfill-shouts-failures.log";
 const PAGE_SIZE = 250;
 const CHECKIN_THROTTLE_MS = 500;
 const PAGE_THROTTLE_MS = 1_000;
+
+const BSKY_CONFIG = {
+  handle: Deno.env.get("BSKY_HANDLE") ?? "",
+  appPassword: Deno.env.get("BSKY_APP_PASSWORD") ?? "",
+  pdsUrl: Deno.env.get("BSKY_PDS_URL"),
+};
 
 if (!FSQ_OAUTH_TOKEN) {
   console.error("FSQ_OAUTH_TOKEN is required.");
@@ -52,7 +58,7 @@ async function appendFailure(entry: object): Promise<void> {
 }
 
 // Step 1: authenticate
-const session = await getSession();
+const session = await getSession(BSKY_CONFIG);
 console.log(`Authenticated as ${session.did}\n`);
 
 // Step 2: fetch existing PDS records (rkey → { cid, value })
@@ -139,8 +145,7 @@ for (const checkin of toUpdate) {
       } catch (err: unknown) {
         // Re-auth if JWT has expired mid-run
         if (String(err).includes("401") || String(err).includes("ExpiredToken")) {
-          clearSession();
-          Object.assign(session, await getSession());
+          Object.assign(session, await getSession(BSKY_CONFIG));
           return await putRecord(
             session,
             "com.barryfrost.checkin",

@@ -3,3 +3,7 @@
 .claude/
 backfill-failures.log
 deno.lock
+node_modules/
+.wrangler/
+.dev.vars
+valtown-export.sql
