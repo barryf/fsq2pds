@@ -13,10 +13,11 @@ Syncs your Foursquare/Swarm checkins to your ATProto PDS as `com.barryfrost.chec
 ### 2. Mint your OAuth token (one-time, local)
 
 ```sh
-FSQ_CLIENT_ID=<id> FSQ_CLIENT_SECRET=<secret> deno task bootstrap
+npm install
+FSQ_CLIENT_ID=<id> FSQ_CLIENT_SECRET=<secret> npm run bootstrap
 ```
 
-A browser window will open. Log in and approve. The token is printed to your terminal — it doesn't expire.
+Open the printed URL in your browser, log in and approve. The token is printed to your terminal — it doesn't expire.
 
 ### 3. Create a Bluesky app password
 
@@ -103,7 +104,8 @@ npx wrangler d1 execute fsq2pds --remote --command \
 
 ## Notes
 
-- **Only new checkins** are synced. Nothing before the first run is imported. Use `deno task backfill` to import historical checkins, and `deno task backfill-shouts` to add `comment` to already-synced records whose shout predates that feature.
+- **Only new checkins** are synced. Nothing before the first run is imported. Use `npm run backfill` to import historical checkins, and `npm run backfill-shouts` to add `comment` to already-synced records whose shout predates that feature.
+- **Local scripts** (`bootstrap/`) need Node 22.18+, which runs TypeScript directly. Pass flags after `--`, e.g. `npm run backfill -- --dry-run`. They read `FSQ_OAUTH_TOKEN`, `FSQ_API_VERSION`, `BSKY_HANDLE`, `BSKY_APP_PASSWORD` (and optional `BSKY_PDS_URL`) from the shell environment.
 - **Photos**: fetched at FSQ's `1024x1024` size. Skipped if >1MB or unreachable.
 - **Edits/deletes**: not synced. Records are write-once. Delete PDS records manually if needed. (`backfill-shouts` is a one-time exception that patches `comment` onto existing records.)
 - **If a run fails mid-way**, the cursor stays at the last successful checkin. The next run replays cleanly — duplicate protection is handled by the `seen_checkins` table, and a checkin already present on the PDS (but missing from D1) is adopted rather than re-created.

@@ -1,6 +1,6 @@
 # fsq2pds
 
-Syncs Foursquare/Swarm checkins to an ATProto PDS (bsky.social) as `com.barryfrost.checkin` records. Runs as a Cloudflare Worker (`scheduled` handler, Cron Trigger every 15 min) with state in D1. Migrated from Val Town (shut down); bootstrap scripts still run locally under Deno.
+Syncs Foursquare/Swarm checkins to an ATProto PDS (bsky.social) as `com.barryfrost.checkin` records. Runs as a Cloudflare Worker (`scheduled` handler, Cron Trigger every 15 min) with state in D1. Migrated from Val Town (shut down) and off Deno (being wound down after its team joined Cloudflare). The one-time `bootstrap/` scripts run locally on Node 22.18+, which executes `.ts` directly.
 
 ## File layout
 
@@ -19,7 +19,7 @@ Syncs Foursquare/Swarm checkins to an ATProto PDS (bsky.social) as `com.barryfro
 | `scripts/valtown-export.ts` | One-time Val Town HTTP val that dumps SQLite state as SQL for D1 import |
 | `wrangler.toml` | Worker config: cron, D1 binding, vars, observability |
 
-`lib/` must stay runtime-neutral (plain `fetch`, no `Deno.*`, no env reads). The Worker passes `env` in, and the Deno bootstrap scripts pass `Deno.env` values in. `lib/db.ts` and `lib/run.ts` are Worker-only (D1 types).
+`lib/` must stay runtime-neutral (plain `fetch`, no `node:*` imports, no env reads). The Worker passes `env` in, and the Node bootstrap scripts pass `process.env` values in. Because Node strips types rather than compiling, `lib/` and `bootstrap/` must use erasable TypeScript only (no enums, namespaces or parameter properties) and `import { type X }` for type-only imports. `erasableSyntaxOnly` and `verbatimModuleSyntax` in both tsconfigs enforce this. `lib/db.ts` and `lib/run.ts` are Worker-only (D1 types).
 
 ## Required env vars (Worker secrets via `wrangler secret put`; plain vars in `wrangler.toml`)
 
@@ -58,17 +58,17 @@ The lexicon doc itself is canonical in the `barryfrost-v7` repo (published there
 |------|---------|
 | `npm run dev` | `wrangler dev --test-scheduled`; trigger with `curl localhost:8787/__scheduled` |
 | `npm run deploy` | Deploy the Worker |
-| `npm run typecheck` | `tsc --noEmit` over `worker.ts` + `lib/` |
+| `npm run typecheck` | `tsc` over `worker.ts` + `lib/` (Workers types), then `bootstrap/` (Node types, `bootstrap/tsconfig.json`) |
 | `npm run db:migrate` | Apply D1 migrations to the remote DB |
 | `npm run tail` | Stream live Worker logs |
 
-## Deno tasks (local, one-time)
+## Local scripts (one-time, Node 22.18+)
 
 | Task | Purpose |
 |------|---------|
-| `deno task bootstrap` | Mint an FSQ OAuth token (one-time, local, interactive) |
-| `deno task backfill` | Import all historical checkins not yet in the PDS |
-| `deno task backfill-shouts` | One-time: add `comment` to already-synced records whose FSQ checkin has a shout that predates this feature. Supports `--dry-run`. |
+| `npm run bootstrap` | Mint an FSQ OAuth token (one-time, local, interactive) |
+| `npm run backfill` | Import all historical checkins not yet in the PDS |
+| `npm run backfill-shouts` | One-time: add `comment` to already-synced records whose FSQ checkin has a shout that predates this feature. Supports `-- --dry-run` (as does `backfill`). |
 
 ## Observability
 
