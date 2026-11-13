@@ -6,18 +6,21 @@
  *   2. Set Redirect URI in the app settings to: http://localhost:8765/callback
  *
  * Usage:
- *   FSQ_CLIENT_ID=<id> FSQ_CLIENT_SECRET=<secret> deno run --allow-env --allow-net bootstrap/fsq-oauth.ts
+ *   FSQ_CLIENT_ID=<id> FSQ_CLIENT_SECRET=<secret> npm run bootstrap
  *
- * Copy the printed token and set it as FSQ_OAUTH_TOKEN in Val.Town env vars.
+ * Copy the printed token and set it as the FSQ_OAUTH_TOKEN Worker secret:
+ *   npx wrangler secret put FSQ_OAUTH_TOKEN
  * FSQ user tokens do not expire.
  */
 
-const clientId = Deno.env.get("FSQ_CLIENT_ID");
-const clientSecret = Deno.env.get("FSQ_CLIENT_SECRET");
+import { createServer } from "node:http";
+
+const clientId = process.env.FSQ_CLIENT_ID;
+const clientSecret = process.env.FSQ_CLIENT_SECRET;
 
 if (!clientId || !clientSecret) {
   console.error("Error: FSQ_CLIENT_ID and FSQ_CLIENT_SECRET must be set.");
-  Deno.exit(1);
+  process.exit(1);
 }
 
 const PORT = 8765;
@@ -29,27 +32,26 @@ console.log("\nStep 1: Open this URL in your browser:\n");
 console.log(AUTH_URL);
 console.log("\nWaiting for redirect on http://localhost:" + PORT + " ...\n");
 
-const code = await new Promise<string>((resolve, _reject) => {
-  const server = Deno.serve(
-    { port: PORT, onListen: () => {} },
-    (req: Request): Response => {
-      const url = new URL(req.url);
-      if (url.pathname === "/callback") {
-        const code = url.searchParams.get("code");
-        if (code) {
-          resolve(code);
-          // Shut down after responding
-          setTimeout(() => server.shutdown(), 100);
-          return new Response(
-            "<html><body><h2>Success! You can close this tab and return to the terminal.</h2></body></html>",
-            { status: 200, headers: { "content-type": "text/html" } },
-          );
-        }
-        return new Response("Missing code parameter", { status: 400 });
-      }
-      return new Response("Not found", { status: 404 });
-    },
-  );
+const code = await new Promise<string>((resolve) => {
+  const server = createServer((req, res) => {
+    const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
+    if (url.pathname !== "/callback") {
+      res.writeHead(404).end("Not found");
+      return;
+    }
+    const code = url.searchParams.get("code");
+    if (!code) {
+      res.writeHead(400).end("Missing code parameter");
+      return;
+    }
+    res
+      .writeHead(200, { "content-type": "text/html" })
+      .end("<html><body><h2>Success! You can close this tab and return to the terminal.</h2></body></html>");
+    server.close();
+    server.closeAllConnections();
+    resolve(code);
+  });
+  server.listen(PORT, "127.0.0.1");
 });
 
 console.log("Step 2: Exchanging code for access token...\n");
@@ -66,14 +68,14 @@ const tokenResp = await fetch(
   `https://foursquare.com/oauth2/access_token?${tokenParams}`,
 );
 
-const tokenData = await tokenResp.json();
+const tokenData = await tokenResp.json() as { access_token?: string };
 
 if (tokenData.access_token) {
-  console.log("Success! Set this as FSQ_OAUTH_TOKEN in Val.Town:\n");
+  console.log("Success! Set this with `npx wrangler secret put FSQ_OAUTH_TOKEN`:\n");
   console.log(tokenData.access_token);
   console.log();
 } else {
   console.error("Failed to get token:");
   console.error(JSON.stringify(tokenData, null, 2));
-  Deno.exit(1);
+  process.exit(1);
 }

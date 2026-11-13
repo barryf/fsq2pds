@@ -7,26 +7,33 @@
  *
  * Usage:
  *   FSQ_OAUTH_TOKEN=... FSQ_API_VERSION=20240101 BSKY_HANDLE=... BSKY_APP_PASSWORD=... \
- *   deno task backfill [--dry-run]
+ *   npm run backfill -- [--dry-run]
  *
  * --dry-run: prints what would be synced without writing any PDS records.
  */
 
+import { appendFile } from "node:fs/promises";
 import { getCheckins } from "../lib/foursquare.ts";
-import { clearSession, getSession, listRecords } from "../lib/atproto.ts";
+import { getSession, listRecords } from "../lib/atproto.ts";
 import { syncCheckin } from "../lib/sync.ts";
 
-const isDryRun = Deno.args.includes("--dry-run");
-const FSQ_OAUTH_TOKEN = Deno.env.get("FSQ_OAUTH_TOKEN") ?? "";
-const FSQ_API_VERSION = Deno.env.get("FSQ_API_VERSION") ?? "20240101";
+const isDryRun = process.argv.slice(2).includes("--dry-run");
+const FSQ_OAUTH_TOKEN = process.env.FSQ_OAUTH_TOKEN ?? "";
+const FSQ_API_VERSION = process.env.FSQ_API_VERSION ?? "20240101";
 const FAILURE_LOG = "backfill-failures.log";
 const PAGE_SIZE = 250;
 const CHECKIN_THROTTLE_MS = 500;
 const PAGE_THROTTLE_MS = 1_000;
 
+const BSKY_CONFIG = {
+  handle: process.env.BSKY_HANDLE ?? "",
+  appPassword: process.env.BSKY_APP_PASSWORD ?? "",
+  pdsUrl: process.env.BSKY_PDS_URL,
+};
+
 if (!FSQ_OAUTH_TOKEN) {
   console.error("FSQ_OAUTH_TOKEN is required.");
-  Deno.exit(1);
+  process.exit(1);
 }
 
 if (isDryRun) console.log("[DRY RUN] No records will be written.\n");
@@ -48,11 +55,11 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
 }
 
 async function appendFailure(entry: object): Promise<void> {
-  await Deno.writeTextFile(FAILURE_LOG, JSON.stringify(entry) + "\n", { append: true });
+  await appendFile(FAILURE_LOG, JSON.stringify(entry) + "\n");
 }
 
 // Step 1: authenticate
-const session = await getSession();
+const session = await getSession(BSKY_CONFIG);
 console.log(`Authenticated as ${session.did}\n`);
 
 // Step 2: build skip-set from existing PDS records
@@ -94,7 +101,7 @@ if (isDryRun) {
     console.log(`  ${c.id}  ${date}  ${c.venue.name}  (${photos} photo${photos !== 1 ? "s" : ""})`);
   }
   console.log(`\n[DRY RUN] Exiting without writing.`);
-  Deno.exit(0);
+  process.exit(0);
 }
 
 // Step 5: sync each checkin
@@ -109,8 +116,7 @@ for (const checkin of toSync) {
       } catch (err: unknown) {
         // Re-auth if JWT has expired mid-run
         if (String(err).includes("401") || String(err).includes("ExpiredToken")) {
-          clearSession();
-          Object.assign(session, await getSession());
+          Object.assign(session, await getSession(BSKY_CONFIG));
           return await syncCheckin(session, checkin);
         }
         throw err;

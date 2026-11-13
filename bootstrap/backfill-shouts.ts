@@ -8,25 +8,32 @@
  *
  * Usage:
  *   FSQ_OAUTH_TOKEN=... FSQ_API_VERSION=20240101 BSKY_HANDLE=... BSKY_APP_PASSWORD=... \
- *   deno task backfill-shouts [--dry-run]
+ *   npm run backfill-shouts -- [--dry-run]
  *
  * --dry-run: prints what would be updated without writing any PDS records.
  */
 
+import { appendFile } from "node:fs/promises";
 import { getCheckins } from "../lib/foursquare.ts";
-import { clearSession, getSession, listRecords, putRecord } from "../lib/atproto.ts";
+import { getSession, listRecords, putRecord } from "../lib/atproto.ts";
 
-const isDryRun = Deno.args.includes("--dry-run");
-const FSQ_OAUTH_TOKEN = Deno.env.get("FSQ_OAUTH_TOKEN") ?? "";
-const FSQ_API_VERSION = Deno.env.get("FSQ_API_VERSION") ?? "20240101";
+const isDryRun = process.argv.slice(2).includes("--dry-run");
+const FSQ_OAUTH_TOKEN = process.env.FSQ_OAUTH_TOKEN ?? "";
+const FSQ_API_VERSION = process.env.FSQ_API_VERSION ?? "20240101";
 const FAILURE_LOG = "backfill-shouts-failures.log";
 const PAGE_SIZE = 250;
 const CHECKIN_THROTTLE_MS = 500;
 const PAGE_THROTTLE_MS = 1_000;
 
+const BSKY_CONFIG = {
+  handle: process.env.BSKY_HANDLE ?? "",
+  appPassword: process.env.BSKY_APP_PASSWORD ?? "",
+  pdsUrl: process.env.BSKY_PDS_URL,
+};
+
 if (!FSQ_OAUTH_TOKEN) {
   console.error("FSQ_OAUTH_TOKEN is required.");
-  Deno.exit(1);
+  process.exit(1);
 }
 
 if (isDryRun) console.log("[DRY RUN] No records will be written.\n");
@@ -48,11 +55,11 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
 }
 
 async function appendFailure(entry: object): Promise<void> {
-  await Deno.writeTextFile(FAILURE_LOG, JSON.stringify(entry) + "\n", { append: true });
+  await appendFile(FAILURE_LOG, JSON.stringify(entry) + "\n");
 }
 
 // Step 1: authenticate
-const session = await getSession();
+const session = await getSession(BSKY_CONFIG);
 console.log(`Authenticated as ${session.did}\n`);
 
 // Step 2: fetch existing PDS records (rkey → { cid, value })
@@ -103,7 +110,7 @@ console.log(`To update: ${toUpdate.length}`);
 console.log(`Already has comment: ${alreadyHasComment}`);
 if (noRecord > 0) {
   console.log(
-    `Shout but no PDS record: ${noRecord}  (run \`deno task backfill\` first to import these checkins)`,
+    `Shout but no PDS record: ${noRecord}  (run \`npm run backfill\` first to import these checkins)`,
   );
 }
 console.log();
@@ -115,7 +122,7 @@ if (isDryRun) {
     console.log(`  ${c.id}  ${date}  ${c.venue.name}  "${c.shout?.trim()}"`);
   }
   console.log(`\n[DRY RUN] Exiting without writing.`);
-  Deno.exit(0);
+  process.exit(0);
 }
 
 // Step 5: update each record
@@ -139,8 +146,7 @@ for (const checkin of toUpdate) {
       } catch (err: unknown) {
         // Re-auth if JWT has expired mid-run
         if (String(err).includes("401") || String(err).includes("ExpiredToken")) {
-          clearSession();
-          Object.assign(session, await getSession());
+          Object.assign(session, await getSession(BSKY_CONFIG));
           return await putRecord(
             session,
             "com.barryfrost.checkin",

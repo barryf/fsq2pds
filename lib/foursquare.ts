@@ -41,11 +41,14 @@ export async function getCheckins(
   if (!resp.ok) {
     throw new Error(`FSQ API error ${resp.status}: ${await resp.text()}`);
   }
-  const data = await resp.json();
+  const data = await resp.json() as {
+    meta?: { code?: number };
+    response?: { checkins?: { items?: FsqCheckin[] } };
+  };
   if (data.meta?.code !== 200) {
     throw new Error(`FSQ API returned non-200: ${JSON.stringify(data.meta)}`);
   }
-  return (data.response?.checkins?.items ?? []) as FsqCheckin[];
+  return data.response?.checkins?.items ?? [];
 }
 
 export function photoUrl(photo: FsqPhoto, size = "1024x1024"): string {

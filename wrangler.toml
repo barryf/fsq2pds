@@ -1,0 +1,25 @@
+name = "fsq2pds"
+main = "worker.ts"
+compatibility_date = "2026-10-15"
+
+# Every 15 minutes, matching the old Val Town cadence. Workers allows down to
+# every minute if fresher syncs are wanted.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+FSQ_API_VERSION = "20240101"
+# BSKY_PDS_URL = "https://bsky.social"  # optional; this is the default
+
+# Secrets (set with `npx wrangler secret put <NAME>`, never committed):
+#   FSQ_OAUTH_TOKEN, BSKY_HANDLE, BSKY_APP_PASSWORD
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fsq2pds"
+# Replace with the id printed by `npx wrangler d1 create fsq2pds`
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[observability]
+enabled = true
