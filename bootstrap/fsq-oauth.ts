@@ -8,7 +8,8 @@
  * Usage:
  *   FSQ_CLIENT_ID=<id> FSQ_CLIENT_SECRET=<secret> deno run --allow-env --allow-net bootstrap/fsq-oauth.ts
  *
- * Copy the printed token and set it as FSQ_OAUTH_TOKEN in Val.Town env vars.
+ * Copy the printed token and set it as the FSQ_OAUTH_TOKEN Worker secret:
+ *   npx wrangler secret put FSQ_OAUTH_TOKEN
  * FSQ user tokens do not expire.
  */
 
@@ -69,7 +70,7 @@ const tokenResp = await fetch(
 const tokenData = await tokenResp.json();
 
 if (tokenData.access_token) {
-  console.log("Success! Set this as FSQ_OAUTH_TOKEN in Val.Town:\n");
+  console.log("Success! Set this with `npx wrangler secret put FSQ_OAUTH_TOKEN`:\n");
   console.log(tokenData.access_token);
   console.log();
 } else {

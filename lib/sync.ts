@@ -2,6 +2,8 @@ import { type FsqCheckin } from "./foursquare.ts";
 import { fetchPhoto } from "./photos.ts";
 import { uploadBlob, createRecord, type Session } from "./atproto.ts";
 
+export const CHECKIN_COLLECTION = "com.barryfrost.checkin";
+
 export interface SyncResult {
   uri: string;
   cid: string;
@@ -53,7 +55,7 @@ export async function syncCheckin(
 
   const { uri, cid } = await createRecord(
     session,
-    "com.barryfrost.checkin",
+    CHECKIN_COLLECTION,
     checkin.id,
     record,
   );

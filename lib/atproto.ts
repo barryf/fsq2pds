@@ -1,35 +1,36 @@
-const PDS_URL = Deno.env.get("BSKY_PDS_URL") ?? "https://bsky.social";
+export const DEFAULT_PDS_URL = "https://bsky.social";
+
+export interface BskyConfig {
+  handle: string;
+  appPassword: string;
+  pdsUrl?: string;
+}
 
 export interface Session {
   accessJwt: string;
   did: string;
+  pdsUrl: string;
 }
 
-// Module-scoped session cache; cleared on each cron invocation via clearSession()
-let cachedSession: Session | null = null;
-
-export function clearSession(): void {
-  cachedSession = null;
-}
-
-export async function getSession(): Promise<Session> {
-  if (cachedSession) return cachedSession;
-  const handle = Deno.env.get("BSKY_HANDLE");
-  const password = Deno.env.get("BSKY_APP_PASSWORD");
-  if (!handle || !password) {
-    throw new Error("BSKY_HANDLE and BSKY_APP_PASSWORD env vars are required");
+/**
+ * Creates a fresh PDS session. No caching: callers hold the returned Session
+ * and call this again if they need to re-authenticate.
+ */
+export async function getSession(config: BskyConfig): Promise<Session> {
+  if (!config.handle || !config.appPassword) {
+    throw new Error("Bluesky handle and app password are required");
   }
-  const resp = await fetch(`${PDS_URL}/xrpc/com.atproto.server.createSession`, {
+  const pdsUrl = config.pdsUrl || DEFAULT_PDS_URL;
+  const resp = await fetch(`${pdsUrl}/xrpc/com.atproto.server.createSession`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ identifier: handle, password }),
+    body: JSON.stringify({ identifier: config.handle, password: config.appPassword }),
   });
   if (!resp.ok) {
     throw new Error(`createSession failed (${resp.status}): ${await resp.text()}`);
   }
-  const data = await resp.json();
-  cachedSession = { accessJwt: data.accessJwt, did: data.did };
-  return cachedSession;
+  const data = await resp.json() as { accessJwt: string; did: string };
+  return { accessJwt: data.accessJwt, did: data.did, pdsUrl };
 }
 
 export async function uploadBlob(
@@ -37,7 +38,7 @@ export async function uploadBlob(
   bytes: Uint8Array<ArrayBuffer>,
   mimeType: string,
 ): Promise<object> {
-  const resp = await fetch(`${PDS_URL}/xrpc/com.atproto.repo.uploadBlob`, {
+  const resp = await fetch(`${session.pdsUrl}/xrpc/com.atproto.repo.uploadBlob`, {
     method: "POST",
     headers: {
       "content-type": mimeType,
@@ -48,7 +49,7 @@ export async function uploadBlob(
   if (!resp.ok) {
     throw new Error(`uploadBlob failed (${resp.status}): ${await resp.text()}`);
   }
-  const data = await resp.json();
+  const data = await resp.json() as { blob: object };
   return data.blob;
 }
 
@@ -70,13 +71,13 @@ export async function listRecords(
       limit: "100",
     });
     if (cursor) params.set("cursor", cursor);
-    const resp = await fetch(`${PDS_URL}/xrpc/com.atproto.repo.listRecords?${params}`, {
+    const resp = await fetch(`${session.pdsUrl}/xrpc/com.atproto.repo.listRecords?${params}`, {
       headers: { authorization: `Bearer ${session.accessJwt}` },
     });
     if (!resp.ok) {
       throw new Error(`listRecords failed (${resp.status}): ${await resp.text()}`);
     }
-    const data = await resp.json();
+    const data = await resp.json() as { cursor?: string; records?: { uri: string; cid: string; value: Record<string, unknown> }[] };
     for (const record of data.records ?? []) {
       const rkey = String(record.uri).split("/").at(-1);
       if (rkey) records.set(rkey, { cid: record.cid, value: record.value });
@@ -93,7 +94,7 @@ export async function createRecord(
   rkey: string,
   record: object,
 ): Promise<CreateRecordResult> {
-  const resp = await fetch(`${PDS_URL}/xrpc/com.atproto.repo.createRecord`, {
+  const resp = await fetch(`${session.pdsUrl}/xrpc/com.atproto.repo.createRecord`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -104,7 +105,7 @@ export async function createRecord(
   if (!resp.ok) {
     throw new Error(`createRecord failed (${resp.status}): ${await resp.text()}`);
   }
-  const data = await resp.json();
+  const data = await resp.json() as CreateRecordResult;
   return { uri: data.uri, cid: data.cid };
 }
 
@@ -115,7 +116,7 @@ export async function putRecord(
   record: object,
   swapRecord?: string,
 ): Promise<CreateRecordResult> {
-  const resp = await fetch(`${PDS_URL}/xrpc/com.atproto.repo.putRecord`, {
+  const resp = await fetch(`${session.pdsUrl}/xrpc/com.atproto.repo.putRecord`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -132,6 +133,28 @@ export async function putRecord(
   if (!resp.ok) {
     throw new Error(`putRecord failed (${resp.status}): ${await resp.text()}`);
   }
-  const data = await resp.json();
+  const data = await resp.json() as CreateRecordResult;
   return { uri: data.uri, cid: data.cid };
+}
+
+/**
+ * Fetches a single record, or returns null if it doesn't exist.
+ */
+export async function getRecord(
+  session: Session,
+  collection: string,
+  rkey: string,
+): Promise<CreateRecordResult | null> {
+  const params = new URLSearchParams({ repo: session.did, collection, rkey });
+  const resp = await fetch(`${session.pdsUrl}/xrpc/com.atproto.repo.getRecord?${params}`, {
+    headers: { authorization: `Bearer ${session.accessJwt}` },
+  });
+  if (resp.ok) {
+    const data = await resp.json() as { uri: string; cid: string };
+    return { uri: data.uri, cid: data.cid };
+  }
+  const body = await resp.text();
+  // The PDS reports a missing record as 400 RecordNotFound (some return 404)
+  if (resp.status === 404 || body.includes("RecordNotFound")) return null;
+  throw new Error(`getRecord failed (${resp.status}): ${body}`);
 }
