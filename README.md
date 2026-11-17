@@ -53,39 +53,25 @@ npm run deploy
 
 To test locally: `npm run dev`, then `curl "http://localhost:8787/__scheduled"`. Put secrets in `.dev.vars` (gitignored), and run `npx wrangler d1 migrations apply fsq2pds --local` first.
 
-## Migrating from Val Town
+## Migration from Val Town (done 2026-11-17)
 
-Val Town is [winding down](https://docs.val.town/migration). Two deadlines:
+fsq2pds ran on Val Town until Val Town [wound down](https://docs.val.town/migration). Val Town code went read-only on 2026-12-10, and vals stopped running on 2027-01-10. The move to Cloudflare was done on 2026-11-17, mostly from a Claude Code session, using Val Town's REST API (with a short-lived API token) and Cloudflare's D1 connector. Only the deploy and secrets were run locally.
 
-- **2026-12-10**: Val Town code becomes read-only. The export file in step 3 must be **created before this date**.
-- **2027-01-10**: vals stop running. The Worker must be syncing before this date.
+What was done, in order:
 
-To move an existing deployment without losing the sync cursor:
+1. **D1:** created `fsq2pds` (Western Europe) and applied `migrations/0001_init.sql`, then committed its `database_id` to `wrangler.toml`.
+2. **Export:** Val Town's API can't query a val's own SQLite (`POST /v1/sqlite/execute` only reaches the account-wide legacy database). So `scripts/valtown-export.ts` was added to the val as an HTTP file over the API (`POST /v2/vals/{id}/files`), protected by a random `SQLITE_EXPORT_TOKEN` set with `POST /v2/vals/{id}/environment_variables/`. The dump was then downloaded with the token sent as a bearer header, and checked to end with `-- Export complete`.
+3. **Import and verify:** 2 `sync_state` rows and 84 `seen_checkins` rows were inserted into D1. They were compared against the dump by row count and per-column sums before going further.
+4. **Pause Val Town:** `cron.ts` was switched from `interval` to `script` (`PUT /v2/vals/{id}/files?path=cron.ts` with `{"type":"script"}`). This stops it running without deleting the code. A second export confirmed nothing had changed in between.
+5. **Deploy (locally):** `wrangler secret put` for the three secrets, using a new Bluesky app password, then `npm run deploy`.
+6. **Confirm:** the first scheduled run synced the next unseen checkins, which were checked as new rows in `seen_checkins`. A deploy alone doesn't prove the cron ran.
+7. **Clean up:** deleted `export.ts` and `SQLITE_EXPORT_TOKEN` from the val, plus the local dump and token. Revoked the old Bluesky app password and the Val Town API token, and deleted the val.
 
-1. **Secrets.** Prefer fresh credentials over copying the old ones out of Val Town. Create a new Bluesky app password for the Worker, and re-use your saved FSQ token or mint a new one with `npm run bootstrap`. Revoke the Val Town app password once the Worker is verified. (Val Town's [transfer-secrets guide](https://docs.val.town/migration/cloudflare/transfer-secrets) has an encrypted copy flow if you can't recover the values.)
-2. Run the commands in step 4 above, but **deploy with the `[triggers]` block commented out** so nothing runs yet. Check the secret names with `npx wrangler secret list`.
-3. **Prepare the export (before 2026-12-10).** Add `scripts/valtown-export.ts` to the fsq2pds val as an HTTP file. It must be in the same val, because its SQLite is scoped per val. Then set a Val Town env var `SQLITE_EXPORT_TOKEN` to a random secret (`openssl rand -hex 32`).
-4. **Pause the Val Town cron** (remove its cron trigger).
-5. **Export** with the token sent from stdin, so it stays out of shell history:
-   ```sh
-   printf 'Authorization: Bearer %s' "$SQLITE_EXPORT_TOKEN" \
-     | curl -fsS -H @- -o valtown-export.sql https://<your-export-endpoint>
-   tail -2 valtown-export.sql   # must end with "-- Export complete"; note the row counts
-   ```
-6. **Import and verify.** The row counts must match the `-- Rows:` line:
-   ```sh
-   npx wrangler d1 execute fsq2pds --remote --file=valtown-export.sql
-   npx wrangler d1 execute fsq2pds --remote --command \
-     "SELECT (SELECT count(*) FROM sync_state) AS state, (SELECT count(*) FROM seen_checkins) AS seen, (SELECT value FROM sync_state WHERE key='cursor_ts') AS cursor"
-   ```
-7. Uncomment `[triggers]` and `npm run deploy`. A deploy doesn't prove the job ran. Wait for a real scheduled run in Workers Logs, then check in on Swarm and confirm a `Synced …` line.
-8. Clean up: delete the export file and the `SQLITE_EXPORT_TOKEN` env var on Val Town, delete the local `valtown-export.sql` once you're happy (it's gitignored), revoke the old Bluesky app password, then delete the vals.
-
-If the export isn't possible, seed the cursor by hand with the unix time of your newest synced checkin. Anything already on the PDS is detected and skipped, so erring early is safe:
+If D1's state is ever lost, there's no need to restore it from Val Town. Set `launched_at` to the cut-off you want, and the next runs will sync anything in Foursquare's latest 50 that's dated after it. Checkins already on the PDS are detected with `getRecord` and recorded in D1, not created again.
 
 ```sh
 npx wrangler d1 execute fsq2pds --remote --command \
-  "INSERT INTO sync_state (key, value) VALUES ('cursor_ts', '<unix-seconds>'), ('launched_at', '<unix-seconds>')"
+  "INSERT OR REPLACE INTO sync_state (key, value) VALUES ('launched_at', '<unix-seconds>')"
 ```
 
 ## Record shape
