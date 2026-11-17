@@ -7,7 +7,7 @@ Syncs Foursquare/Swarm checkins to an ATProto PDS (bsky.social) as `com.barryfro
 | File | Purpose |
 |------|---------|
 | `worker.ts` | Worker entry point; `scheduled()` calls `run(env)` |
-| `lib/run.ts` | The sync loop (cursor, dedup, subrequest budget) |
+| `lib/run.ts` | The sync loop (dedup against `seen_checkins`, subrequest budget) |
 | `lib/db.ts` | D1 helpers (state, dedup). Schema is in `migrations/` |
 | `lib/foursquare.ts` | Foursquare v2 API client |
 | `lib/atproto.ts` | Bluesky XRPC client (createSession, uploadBlob, createRecord, getRecord); takes config, never reads env |
@@ -16,6 +16,7 @@ Syncs Foursquare/Swarm checkins to an ATProto PDS (bsky.social) as `com.barryfro
 | `bootstrap/backfill.ts` | One-time script to backfill historical checkins |
 | `bootstrap/backfill-shouts.ts` | One-time script to backfill `comment` onto already-synced records |
 | `migrations/0001_init.sql` | D1 schema (`seen_checkins`, `sync_state`) |
+| `test/run.test.ts` | `npm test`: end-to-end tests of `run()` against node:sqlite shaped like D1 and a stubbed fetch |
 | `scripts/valtown-export.ts` | One-time, bearer-token-protected Val Town HTTP file that dumps SQLite state as SQL for D1 import (must be created before Val Town goes read-only on 2026-12-10) |
 | `wrangler.toml` | Worker config: cron, D1 binding, vars, observability |
 
@@ -37,8 +38,10 @@ The bootstrap scripts read the same names from their shell environment.
 
 - **Idempotency**: `seen_checkins` table with PRIMARY KEY on `fsq_id`. `INSERT OR IGNORE` means re-running is always safe. Before creating a record the cron calls `getRecord`; if the rkey already exists on the PDS it is adopted into D1, so the loop never gets stuck on an rkey conflict.
 - **Subrequest budget**: free Workers allow 50 outbound fetches per invocation. `run()` budgets 45 (FSQ + session + 2 per checkin + 2 per photo) and defers the rest to the next run.
-- **Cursor**: `sync_state` table holds `cursor_ts` (unix seconds). Advanced only after successful write.
-- **First run**: Sets cursor to NOW and exits immediately. Sync begins next run (prevents accidental historical import).
+- **What gets synced**: every checkin in FSQ's latest page (50, newest by checkin date) that is dated after `launched_at` and not already in `seen_checkins` (one batched `IN (…)` query), oldest first. There is deliberately no "newer than the last synced" cursor filter: Swarm lets you add a missed checkin later with an earlier date, and it must still sync. Limit: a checkin backdated beyond the latest 50 needs `npm run backfill`.
+- **Failures**: a failing checkin is logged and skipped; it stays unseen and is retried next run, and doesn't block later ones.
+- **`cursor_ts`**: informational only (newest checkin date synced so far); never moves backwards, not used for filtering.
+- **First run**: if `launched_at` is unset, sets it (and `cursor_ts`) to NOW and exits. Nothing dated before `launched_at` is ever synced by the cron (prevents accidental historical import).
 - **rkey**: Uses FSQ checkin ID directly (hex string, valid AT Proto rkey chars, guaranteed unique).
 - **Photos**: Downloaded at FSQ's `1024x1024` size variant. Skipped silently if fetch fails or bytes > 1MB. Checkin record still created.
 - **Session**: `getSession(config)` creates a fresh session each call (no cache); called once per cron run. No refresh token logic.
@@ -58,6 +61,7 @@ The lexicon doc itself is canonical in the `barryfrost-v7` repo (published there
 |------|---------|
 | `npm run dev` | `wrangler dev --test-scheduled`; trigger with `curl localhost:8787/__scheduled` |
 | `npm run deploy` | Deploy the Worker |
+| `npm test` | Run `test/*.test.ts` with `node --test` |
 | `npm run typecheck` | `tsc` over `worker.ts` + `lib/` (Workers types), then `bootstrap/` (Node types, `bootstrap/tsconfig.json`) |
 | `npm run db:migrate` | Apply D1 migrations to the remote DB |
 | `npm run tail` | Stream live Worker logs |
@@ -74,4 +78,4 @@ The lexicon doc itself is canonical in the `barryfrost-v7` repo (published there
 
 - Workers Logs (`[observability]` enabled) / `npm run tail` show per-checkin outcome: `Synced <fsq_id> (<venue>) → at://...`
 - D1 `seen_checkins` is the audit trail; inspect via the Cloudflare dashboard or `wrangler d1 execute fsq2pds --remote --command "…"`.
-- `sync_state` holds `cursor_ts` and `launched_at`.
+- `sync_state` holds `launched_at` (the sync cut-off) and `cursor_ts` (newest synced checkin date, for monitoring).

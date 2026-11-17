@@ -43,7 +43,7 @@ npm run deploy
 
 ### 5. Verify
 
-1. **First run**: wait for the cron (or trigger it from the dashboard: Workers → fsq2pds → Settings → Trigger Events). It sets the sync cursor to now and exits. Check `npm run tail` or Workers Logs for `First run: launch cursor set to ...`.
+1. **First run**: wait for the cron (or trigger it from the dashboard: Workers → fsq2pds → Settings → Trigger Events). It records `launched_at` as now and exits. Check `npm run tail` or Workers Logs for `First run: launched_at set to ...`.
 2. **Check in on Swarm.**
 3. **Wait up to 5 minutes**, then look for `Synced <id> (<venue>) → at://...` in the logs.
 4. **View your records** at:
@@ -121,9 +121,9 @@ npx wrangler d1 execute fsq2pds --remote --command \
 
 ## Notes
 
-- **Only new checkins** are synced. Nothing before the first run is imported. Use `npm run backfill` to import historical checkins, and `npm run backfill-shouts` to add `comment` to already-synced records whose shout predates that feature.
+- **Only checkins dated after the first run** are synced. Each run syncs any checkin in Foursquare's latest 50 that it hasn't seen, so a missed checkin added later from Swarm's timeline (with an earlier date) is still picked up. Nothing before the first run is imported. Use `npm run backfill` to import historical checkins, and `npm run backfill-shouts` to add `comment` to already-synced records whose shout predates that feature.
 - **Local scripts** (`bootstrap/`) need Node 22.18+, which runs TypeScript directly. Pass flags after `--`, e.g. `npm run backfill -- --dry-run`. They read `FSQ_OAUTH_TOKEN`, `FSQ_API_VERSION`, `BSKY_HANDLE`, `BSKY_APP_PASSWORD` (and optional `BSKY_PDS_URL`) from the shell environment.
 - **Photos**: fetched at FSQ's `1024x1024` size. Skipped if >1MB or unreachable.
 - **Edits/deletes**: not synced. Records are write-once. Delete PDS records manually if needed. (`backfill-shouts` is a one-time exception that patches `comment` onto existing records.)
-- **If a run fails mid-way**, the cursor stays at the last successful checkin. The next run replays cleanly — duplicate protection is handled by the `seen_checkins` table, and a checkin already present on the PDS (but missing from D1) is adopted rather than re-created.
+- **If a checkin fails to sync**, it's logged and retried on the next run; later checkins aren't held up. Duplicate protection is handled by the `seen_checkins` table, and a checkin already present on the PDS (but missing from D1) is adopted rather than re-created.
 - **Per-run cap**: the free Workers plan allows 50 outbound requests per run. Each checkin costs 2 + 2 per photo, so a large backlog is spread across several runs.

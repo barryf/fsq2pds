@@ -16,12 +16,19 @@ export async function setState(db: D1Database, key: string, value: string): Prom
     .run();
 }
 
-export async function hasCheckin(db: D1Database, fsqId: string): Promise<boolean> {
-  const row = await db
-    .prepare("SELECT 1 AS found FROM seen_checkins WHERE fsq_id = ?")
-    .bind(fsqId)
-    .first();
-  return row !== null;
+/**
+ * Returns which of the given FSQ checkin IDs are already in seen_checkins,
+ * in a single query. Callers pass at most one FSQ page (50 IDs), well under
+ * D1's 100-bound-parameter limit.
+ */
+export async function seenCheckinIds(db: D1Database, fsqIds: string[]): Promise<Set<string>> {
+  if (fsqIds.length === 0) return new Set();
+  const placeholders = fsqIds.map(() => "?").join(", ");
+  const { results } = await db
+    .prepare(`SELECT fsq_id FROM seen_checkins WHERE fsq_id IN (${placeholders})`)
+    .bind(...fsqIds)
+    .all<{ fsq_id: string }>();
+  return new Set(results.map((r) => r.fsq_id));
 }
 
 export async function recordCheckin(

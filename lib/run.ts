@@ -1,4 +1,4 @@
-import { getState, setState, hasCheckin, recordCheckin } from "./db.ts";
+import { getState, setState, seenCheckinIds, recordCheckin } from "./db.ts";
 import { getCheckins } from "./foursquare.ts";
 import { getRecord, getSession, type Session } from "./atproto.ts";
 import { syncCheckin, CHECKIN_COLLECTION } from "./sync.ts";
@@ -14,7 +14,7 @@ export interface Env {
 
 // Free-plan Workers get 50 outbound fetches per invocation. Leave headroom for
 // the FSQ fetch + createSession, and stop early rather than hit the limit
-// mid-checkin. Unprocessed checkins stay after the cursor and run next time.
+// mid-checkin. Unprocessed checkins stay unseen and run next time.
 const SUBREQUEST_BUDGET = 45;
 
 export async function run(env: Env): Promise<void> {
@@ -24,22 +24,20 @@ export async function run(env: Env): Promise<void> {
   }
   const db = env.DB;
 
-  const cursorStr = await getState(db, "cursor_ts");
+  const launchedStr = await getState(db, "launched_at");
 
-  // First ever run: record the launch time as our cursor and exit.
-  // Sync will begin from this point on the next run.
-  if (cursorStr === null) {
+  // First ever run: record the launch time and exit. Only checkins dated after
+  // launch are ever synced, so nothing historical is imported by accident.
+  if (launchedStr === null) {
     const now = Math.floor(Date.now() / 1000);
     await setState(db, "launched_at", String(now));
     await setState(db, "cursor_ts", String(now));
-    console.log(`First run: launch cursor set to ${new Date(now * 1000).toISOString()}`);
+    console.log(`First run: launched_at set to ${new Date(now * 1000).toISOString()}`);
     return;
   }
 
-  const cursorTs = parseInt(cursorStr, 10);
-  let newCursorTs = cursorTs;
-
-  console.log(`Fetching recent checkins (cursor: ${new Date(cursorTs * 1000).toISOString()})`);
+  const launchedAt = parseInt(launchedStr, 10);
+  const cursorTs = parseInt((await getState(db, "cursor_ts")) ?? launchedStr, 10);
 
   let checkins;
   try {
@@ -50,18 +48,22 @@ export async function run(env: Env): Promise<void> {
   }
   let subrequests = 1;
 
-  // Filter to checkins after our cursor; FSQ returns newest-first
-  const newCheckins = checkins.filter((c) => c.createdAt > cursorTs);
+  // Sync anything in FSQ's latest page that we haven't seen, not just checkins
+  // newer than the last one synced: Swarm lets you add a missed checkin later
+  // with an earlier date, and it should still be picked up. One D1 query
+  // covers the whole page.
+  const candidates = checkins.filter((c) => c.createdAt > launchedAt);
+  const seen = await seenCheckinIds(db, candidates.map((c) => c.id));
+  const unseen = candidates
+    .filter((c) => !seen.has(c.id))
+    .sort((a, b) => a.createdAt - b.createdAt); // oldest first
 
-  if (newCheckins.length === 0) {
-    console.log("No new checkins");
+  if (unseen.length === 0) {
+    console.log(`No new checkins (${checkins.length} fetched)`);
     return;
   }
 
-  // Process oldest-first so records are written in chronological order
-  newCheckins.reverse();
-
-  console.log(`Processing ${newCheckins.length} checkin(s)`);
+  console.log(`Processing ${unseen.length} unsynced checkin(s)`);
 
   let session: Session;
   try {
@@ -76,14 +78,9 @@ export async function run(env: Env): Promise<void> {
   }
   subrequests++;
 
+  let newestSynced = cursorTs;
   let processed = 0;
-  for (const checkin of newCheckins) {
-    if (await hasCheckin(db, checkin.id)) {
-      console.log(`Already synced: ${checkin.id}`);
-      newCursorTs = Math.max(newCursorTs, checkin.createdAt);
-      continue;
-    }
-
+  for (const checkin of unseen) {
     // getRecord + createRecord + (download + upload) per photo
     const cost = 2 + 2 * (checkin.photos?.items?.length ?? 0);
     if (processed > 0 && subrequests + cost > SUBREQUEST_BUDGET) {
@@ -93,28 +90,29 @@ export async function run(env: Env): Promise<void> {
     subrequests += cost;
     processed++;
 
+    const when = new Date(checkin.createdAt * 1000).toISOString();
     try {
       // The PDS may already hold this record (e.g. a previous run died between
-      // createRecord and recordCheckin, or D1 state was restored from an older
-      // export). Adopt it rather than failing on the rkey conflict forever.
+      // createRecord and recordCheckin, or it was written by bootstrap/backfill).
+      // Adopt it rather than failing on the rkey conflict.
       const existing = await getRecord(session, CHECKIN_COLLECTION, checkin.id);
       const { uri, cid } = existing ?? await syncCheckin(session, checkin);
       await recordCheckin(db, checkin.id, checkin.createdAt, uri, cid);
       console.log(
         existing
-          ? `Already on PDS, recorded ${checkin.id} (${checkin.venue.name}) → ${uri}`
-          : `Synced ${checkin.id} (${checkin.venue.name}) → ${uri}`,
+          ? `Already on PDS, recorded ${checkin.id} (${checkin.venue.name}, ${when}) → ${uri}`
+          : `Synced ${checkin.id} (${checkin.venue.name}, ${when}) → ${uri}`,
       );
-      newCursorTs = Math.max(newCursorTs, checkin.createdAt);
+      newestSynced = Math.max(newestSynced, checkin.createdAt);
     } catch (err) {
-      console.error(`Failed to process checkin ${checkin.id}:`, err);
-      // Stop here; seen_checkins dedup ensures next run replays this checkin cleanly
-      break;
+      // Carry on: the checkin stays unseen and is retried next run, and one
+      // bad checkin can't block the ones after it.
+      console.error(`Failed to process checkin ${checkin.id} (${when}):`, err);
     }
   }
 
-  if (newCursorTs > cursorTs) {
-    await setState(db, "cursor_ts", String(newCursorTs));
-    console.log(`Cursor advanced to ${new Date(newCursorTs * 1000).toISOString()}`);
+  // cursor_ts is informational only now: the newest checkin date synced.
+  if (newestSynced > cursorTs) {
+    await setState(db, "cursor_ts", String(newestSynced));
   }
 }
