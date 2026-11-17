@@ -13,7 +13,8 @@
     "tail": "wrangler tail",
     "bootstrap": "node bootstrap/fsq-oauth.ts",
     "backfill": "node bootstrap/backfill.ts",
-    "backfill-shouts": "node bootstrap/backfill-shouts.ts"
+    "backfill-shouts": "node bootstrap/backfill-shouts.ts",
+    "test": "node --test \"test/*.test.ts\""
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261030.1",
