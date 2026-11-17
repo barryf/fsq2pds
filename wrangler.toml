@@ -17,8 +17,7 @@ FSQ_API_VERSION = "20240101"
 [[d1_databases]]
 binding = "DB"
 database_name = "fsq2pds"
-# Replace with the id printed by `npx wrangler d1 create fsq2pds`
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "29ec6192-05cb-4bb0-a4d2-c0ca2446b75e"
 migrations_dir = "migrations"
 
 [observability]
