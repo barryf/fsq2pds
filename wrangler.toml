@@ -2,10 +2,11 @@ name = "fsq2pds"
 main = "worker.ts"
 compatibility_date = "2026-10-15"
 
-# Every 15 minutes, matching the old Val Town cadence. Workers allows down to
-# every minute if fresher syncs are wanted.
+# Every 5 minutes. Runs with no new checkins make one FSQ request and return
+# before creating a Bluesky session, so createSession's daily rate limit
+# isn't a concern at this cadence.
 [triggers]
-crons = ["*/15 * * * *"]
+crons = ["*/5 * * * *"]
 
 [vars]
 FSQ_API_VERSION = "20240101"

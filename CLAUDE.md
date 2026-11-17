@@ -1,6 +1,6 @@
 # fsq2pds
 
-Syncs Foursquare/Swarm checkins to an ATProto PDS (bsky.social) as `com.barryfrost.checkin` records. Runs as a Cloudflare Worker (`scheduled` handler, Cron Trigger every 15 min) with state in D1. Migrated from Val Town (shut down) and off Deno (being wound down after its team joined Cloudflare). The one-time `bootstrap/` scripts run locally on Node 22.18+, which executes `.ts` directly.
+Syncs Foursquare/Swarm checkins to an ATProto PDS (bsky.social) as `com.barryfrost.checkin` records. Runs as a Cloudflare Worker (`scheduled` handler, Cron Trigger every 5 min) with state in D1. Migrated from Val Town (shut down) and off Deno (being wound down after its team joined Cloudflare). The one-time `bootstrap/` scripts run locally on Node 22.18+, which executes `.ts` directly.
 
 ## File layout
 
