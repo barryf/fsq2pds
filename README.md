@@ -1,6 +1,6 @@
 # fsq2pds
 
-Syncs your Foursquare/Swarm checkins to your ATProto PDS as `com.barryfrost.checkin` records. Runs as a Cloudflare Worker on a 15-minute Cron Trigger, with state in D1. Fits in the Workers free plan.
+Syncs your Foursquare/Swarm checkins to your ATProto PDS as `com.barryfrost.checkin` records. Runs as a Cloudflare Worker on a 5-minute Cron Trigger, with state in D1. Fits in the Workers free plan.
 
 ## Setup
 
@@ -45,7 +45,7 @@ npm run deploy
 
 1. **First run**: wait for the cron (or trigger it from the dashboard: Workers → fsq2pds → Settings → Trigger Events). It sets the sync cursor to now and exits. Check `npm run tail` or Workers Logs for `First run: launch cursor set to ...`.
 2. **Check in on Swarm.**
-3. **Wait up to 15 minutes**, then look for `Synced <id> (<venue>) → at://...` in the logs.
+3. **Wait up to 5 minutes**, then look for `Synced <id> (<venue>) → at://...` in the logs.
 4. **View your records** at:
    ```
    https://pdsls.dev/at://<your-did>/com.barryfrost.checkin
