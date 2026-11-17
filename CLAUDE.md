@@ -16,7 +16,7 @@ Syncs Foursquare/Swarm checkins to an ATProto PDS (bsky.social) as `com.barryfro
 | `bootstrap/backfill.ts` | One-time script to backfill historical checkins |
 | `bootstrap/backfill-shouts.ts` | One-time script to backfill `comment` onto already-synced records |
 | `migrations/0001_init.sql` | D1 schema (`seen_checkins`, `sync_state`) |
-| `scripts/valtown-export.ts` | One-time Val Town HTTP val that dumps SQLite state as SQL for D1 import |
+| `scripts/valtown-export.ts` | One-time, bearer-token-protected Val Town HTTP file that dumps SQLite state as SQL for D1 import (must be created before Val Town goes read-only on 2026-12-10) |
 | `wrangler.toml` | Worker config: cron, D1 binding, vars, observability |
 
 `lib/` must stay runtime-neutral (plain `fetch`, no `node:*` imports, no env reads). The Worker passes `env` in, and the Node bootstrap scripts pass `process.env` values in. Because Node strips types rather than compiling, `lib/` and `bootstrap/` must use erasable TypeScript only (no enums, namespaces or parameter properties) and `import { type X }` for type-only imports. `erasableSyntaxOnly` and `verbatimModuleSyntax` in both tsconfigs enforce this. `lib/db.ts` and `lib/run.ts` are Worker-only (D1 types).

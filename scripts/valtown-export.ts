@@ -1,18 +1,22 @@
 /**
  * One-time Val Town export of fsq2pds state, for importing into Cloudflare D1.
+ * Follows https://docs.val.town/migration/cloudflare/migrate-sqlite.
  *
- * Paste into a NEW HTTP val in the same Val Town account as the fsq2pds cron
- * val. Val Town SQLite is per-val, so if your project's database is scoped to
- * the fsq2pds val, add this file to that project instead (e.g. as
- * `export.ts`, HTTP trigger) so it reads the same database.
+ * Must be created BEFORE Val Town code goes read-only on 2026-12-10.
  *
- * Open the val's URL and save the response as valtown-export.sql, then:
- *   npx wrangler d1 execute fsq2pds --remote --file=valtown-export.sql
+ * 1. Add this file to the fsq2pds val as an HTTP file. It must live in the
+ *    same val, because std/sqlite/main.ts is scoped to the val it runs in.
+ * 2. Set a Val Town env var SQLITE_EXPORT_TOKEN to a random secret, e.g. the
+ *    output of `openssl rand -hex 32`.
+ * 3. Pause the fsq2pds cron so the state doesn't change mid-export.
+ * 4. Download, keeping the token out of your shell history and process list:
+ *      printf 'Authorization: Bearer %s' "$SQLITE_EXPORT_TOKEN" \
+ *        | curl -fsS -H @- -o valtown-export.sql https://<your-endpoint>
+ *    Check the file ends with "-- Export complete" before importing.
+ * 5. npx wrangler d1 execute fsq2pds --remote --file=valtown-export.sql
+ * 6. Delete this HTTP file and the SQLITE_EXPORT_TOKEN env var.
  *
- * Delete the HTTP val afterwards. The data isn't secret (checkin IDs and
- * at:// URIs are public on the PDS), but there's no reason to leave it up.
- *
- * Not part of the Worker; Val Town-only (uses esm.town std/sqlite).
+ * Not part of the Worker; Val Town-only (Deno, esm.town std/sqlite).
  */
 import { sqlite } from "https://esm.town/v/std/sqlite/main.ts";
 
@@ -22,7 +26,16 @@ function lit(v: unknown): string {
   return `'${String(v).replaceAll("'", "''")}'`;
 }
 
-export default async function (_req: Request): Promise<Response> {
+export default async function (req: Request): Promise<Response> {
+  const headers = { "cache-control": "no-store" };
+  const token = Deno.env.get("SQLITE_EXPORT_TOKEN");
+  if (!token || req.headers.get("authorization") !== `Bearer ${token}`) {
+    return new Response("Unauthorized", { status: 401, headers });
+  }
+  if (req.method !== "GET") {
+    return new Response("Method not allowed", { status: 405, headers });
+  }
+
   const lines: string[] = [
     `-- fsq2pds Val Town export, ${new Date().toISOString()}`,
   ];
@@ -45,8 +58,9 @@ export default async function (_req: Request): Promise<Response> {
     );
   }
 
-  lines.push(`-- ${state.rows.length} sync_state row(s), ${seen.rows.length} seen_checkins row(s)`);
+  lines.push(`-- Rows: sync_state=${state.rows.length} seen_checkins=${seen.rows.length}`);
+  lines.push("-- Export complete");
   return new Response(lines.join("\n") + "\n", {
-    headers: { "content-type": "text/plain; charset=utf-8" },
+    headers: { ...headers, "content-type": "application/sql; charset=utf-8" },
   });
 }
